@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Silent mode
+Comment=Toggle quiet fans + RGB off (Super+Shift+N)
+Exec=silent-toggle
+Icon=weather-clear-night
+Terminal=false
+Type=Application
+Categories=Utility;

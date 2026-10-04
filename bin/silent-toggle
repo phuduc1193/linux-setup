@@ -1,0 +1,62 @@
+#!/usr/bin/python3
+"""Silent mode: power-saver + RGB off via ryoku-hub ONLY.
+Never call openrgb directly: raw mode changes desync the hub, whose `apply`
+only re-pushes settings it changed. A brightness CHANGE forces a full push.
+ponytail: no direct fan RPM control on this B650 (no pwm hwmon); lower power
+draw lets the BIOS fan curve spin down on its own."""
+import json
+import subprocess
+from pathlib import Path
+
+HUB = "/usr/bin/ryoku-hub"
+STATE = Path.home() / ".local/state/silent-mode"
+SAVE = STATE / "brightness.json"
+# Mode lives in a marker file, NOT activeProfile: ryoku-power-cutover flips
+# profiles on its own, which desynced the toggle and poisoned SAVE with zeros.
+ON = STATE / "on"
+
+
+def hub(*args):
+    return subprocess.run([HUB, *args], capture_output=True, text=True).stdout
+
+
+def devices():
+    try:
+        ds = json.loads(hub("lighting", "state")).get("devices", [])
+    except json.JSONDecodeError:
+        return []
+    return list(ds.values() if isinstance(ds, dict) else ds)
+
+
+def notify(title, body):
+    subprocess.run(["/usr/bin/notify-send", title, body])
+
+
+# The fx daemon loses its server session (broken pipe) whenever ryoku-openrgb
+# restarts and its unit is Restart=no; is-active misses the active-but-dead
+# case. Always revive: a fresh daemon reconnects AND re-pushes current
+# settings, so stuck breathe devices heal themselves here.
+subprocess.run(["/usr/bin/systemctl", "--user", "restart", "ryoku-lighting-fx"])
+
+devs = [d for d in devices() if d.get("managed", True)]
+
+if ON.exists():
+    hub("cpu", "switch", "balanced")
+    ON.unlink()
+    saved = json.loads(SAVE.read_text()) if SAVE.exists() else {}
+    for d in devs:
+        hub("lighting", "set", d["key"],
+            json.dumps({"brightness": saved.get(d["key"], d.get("brightness") or 50)}))
+    notify("Silent mode OFF", "Fans normal, RGB restored")
+else:
+    hub("cpu", "switch", "power-saver")
+    STATE.mkdir(parents=True, exist_ok=True)
+    # never save 0: a poisoned brightness.json restored zeros forever,
+    # leaving the breathe devices dark (only the RAM, which ignores
+    # brightness, ever lit again)
+    SAVE.write_text(json.dumps(
+        {d["key"]: max(d.get("brightness") or 50, 10) for d in devs}))
+    ON.write_text("")
+    for d in devs:
+        hub("lighting", "set", d["key"], '{"brightness": 0}')
+    notify("Silent mode ON", "Lights out, fans low")
