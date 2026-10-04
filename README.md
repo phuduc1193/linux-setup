@@ -91,7 +91,7 @@ sudo systemctl enable --now openrgb.service
 
 ## Sword login (SDDM)
 
-Ryoku's katana video login, portable to CachyOS.
+Katana video login, portable to CachyOS.
 
 ![sword preview](sddm-sword/sword-preview.jpg)
 
@@ -99,4 +99,4 @@ Ryoku's katana video login, portable to CachyOS.
 ./sddm-sword/install.sh
 ```
 
-Upstream: `Darkkal44/qylock themes/sword` (GPLv3, see `sddm-sword/ryoku/PROVENANCE.txt`).
+Upstream: `Darkkal44/qylock themes/sword` (GPLv3, see `sddm-sword/sword/PROVENANCE.txt`).
