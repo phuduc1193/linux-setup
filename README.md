@@ -88,3 +88,15 @@ The toggle itself needs no server, but other apps do:
 ```bash
 sudo systemctl enable --now openrgb.service
 ```
+
+## Sword login (SDDM)
+
+Ryoku's katana video login, portable to CachyOS.
+
+![sword preview](sddm-sword/sword-preview.jpg)
+
+```bash
+./sddm-sword/install.sh
+```
+
+Upstream: `Darkkal44/qylock themes/sword` (GPLv3, see `sddm-sword/ryoku/PROVENANCE.txt`).
