@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Silent mode
 Comment=Toggle quiet fans + RGB off (Super+Shift+N)
-Exec=silent-toggle
+Exec=sh -c "$HOME/.local/bin/silent-toggle"
 Icon=weather-clear-night
 Terminal=false
 Type=Application

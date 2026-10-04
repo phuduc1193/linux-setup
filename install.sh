@@ -17,7 +17,11 @@ if [ -f ~/.config/hypr/hyprland.lua ] || command -v ryoku &>/dev/null; then
     echo "    Ryoku Hyprland config installed to ~/.config/hypr/user.lua"
 else
     # Append the bind if not already present
-    if ! grep -q "silent-toggle" ~/.config/hypr/hyprland.conf 2>/dev/null; then
+    if [ ! -f ~/.config/hypr/hyprland.conf ]; then
+        echo "    WARNING: ~/.config/hypr/hyprland.conf not found, skipping keybind."
+        echo "    Add this line manually once Hyprland is configured:"
+        cat "$REPO/hypr/hyprland.conf"
+    elif ! grep -q "silent-toggle" ~/.config/hypr/hyprland.conf 2>/dev/null; then
         cat "$REPO/hypr/hyprland.conf" >> ~/.config/hypr/hyprland.conf
         echo "    Standard Hyprland bind appended to ~/.config/hypr/hyprland.conf"
     fi
@@ -25,6 +29,14 @@ fi
 
 # Ensure ~/.local/bin is on PATH for this session
 export PATH="$HOME/.local/bin:$PATH"
+
+echo "==> Checking power-profiles-daemon..."
+if command -v powerprofilesctl &>/dev/null; then
+    sudo systemctl enable --now power-profiles-daemon 2>/dev/null || true
+else
+    echo "    powerprofilesctl not found. Install power-profiles-daemon for CPU profile switching:"
+    echo "      sudo pacman -S power-profiles-daemon"
+fi
 
 echo "==> Checking OpenRGB..."
 if ! command -v openrgb &>/dev/null; then
@@ -34,8 +46,10 @@ if ! command -v openrgb &>/dev/null; then
 fi
 
 if ! systemctl is-active --quiet openrgb.service 2>/dev/null; then
-    echo "    Enabling OpenRGB server..."
-    sudo systemctl enable --now openrgb.service
+    echo "    NOTE: openrgb.service is not running. The toggle uses direct"
+    echo "    hardware access and does not need it, but other apps (e.g. SDK"
+    echo "    clients on port 6742) do. Start it with:"
+    echo "      sudo systemctl enable --now openrgb.service"
 fi
 
 echo "==> Checking kernel cmdline for acpi_enforce_resources=lax..."

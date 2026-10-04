@@ -19,8 +19,9 @@ No Ryoku required.
 ## Requirements
 
 - Arch/CachyOS with Hyprland
-- `openrgb` package + `openrgb.service` running
-- `powerprofilesctl` (from `power-profiles-daemon`, usually installed)
+- `openrgb` package (the toggle uses direct hardware access; `openrgb.service`
+  is optional and only needed for SDK clients on port 6742)
+- `power-profiles-daemon` for CPU switching (`powerprofilesctl`, usually installed)
 - Kernel boot parameter: `acpi_enforce_resources=lax`
   - Without this, the FCH SMBus stays disabled and the RAM sticks will **not** appear in OpenRGB.
 
@@ -49,8 +50,9 @@ Then add `acpi_enforce_resources=lax` to your kernel cmdline and reboot:
 
 ## How it works
 
-`silent-toggle` talks to the running OpenRGB server on `127.0.0.1:6742` using the
-`openrgb` CLI. It keeps two profiles in `~/.config/OpenRGB/profiles/`:
+`silent-toggle` calls the `openrgb` CLI, which touches hardware directly
+(local SMBus/HID scan on each run, no server needed). It keeps two profiles
+in `~/.config/OpenRGB/profiles/`:
 
 - `normal` — whatever lighting is active when you press the hotkey
 - `silent` — all LEDs set to `#000000`
@@ -79,7 +81,9 @@ grep acpi_enforce_resources /proc/cmdline
 
 If it's missing, add `acpi_enforce_resources=lax`, rebuild your bootloader config, and reboot.
 
-### openrgb service not running
+### OpenRGB SDK clients can't connect (port 6742)
+
+The toggle itself needs no server, but other apps do:
 
 ```bash
 sudo systemctl enable --now openrgb.service

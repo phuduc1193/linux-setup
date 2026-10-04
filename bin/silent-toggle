@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Silent mode: power-saver + all RGB off via OpenRGB directly.
-
-No Ryoku needed. Assumes the OpenRGB server is running (openrgb.service).
+"""Silent mode: power-saver + all RGB off via the OpenRGB CLI directly
+(local hardware access, no server or Ryoku needed).
 
 RAM detection fix: add `acpi_enforce_resources=lax` to the kernel cmdline,
 otherwise the FCH SMBus is disabled and Corsair Vengeance RGB DDR5 sticks
@@ -21,15 +20,7 @@ ON = STATE / "on"
 PROFILES = Path.home() / ".config/OpenRGB/profiles"
 
 
-def ensure_server():
-    """Start the OpenRGB server if the CLI cannot talk to it."""
-    r = subprocess.run([OPENRGB, "--list-devices"], capture_output=True, text=True)
-    if r.returncode != 0:
-        subprocess.run(["sudo", "systemctl", "start", "openrgb.service"], capture_output=True)
-
-
 def run(*args):
-    ensure_server()
     r = subprocess.run([OPENRGB, *args], capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"openrgb {' '.join(args)} failed: {r.stderr.strip()}")
@@ -37,7 +28,8 @@ def run(*args):
 
 
 def notify(title, body):
-    subprocess.run([NOTIFY, title, body], capture_output=True)
+    if Path(NOTIFY).exists():
+        subprocess.run([NOTIFY, title, body], capture_output=True)
 
 
 def ensure_profiles():
