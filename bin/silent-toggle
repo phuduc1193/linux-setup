@@ -1,62 +1,84 @@
-#!/usr/bin/python3
-"""Silent mode: power-saver + RGB off via ryoku-hub ONLY.
-Never call openrgb directly: raw mode changes desync the hub, whose `apply`
-only re-pushes settings it changed. A brightness CHANGE forces a full push.
-ponytail: no direct fan RPM control on this B650 (no pwm hwmon); lower power
-draw lets the BIOS fan curve spin down on its own."""
-import json
+#!/usr/bin/env python3
+"""Silent mode: power-saver + all RGB off via OpenRGB directly.
+
+No Ryoku needed. Assumes the OpenRGB server is running (openrgb.service).
+
+RAM detection fix: add `acpi_enforce_resources=lax` to the kernel cmdline,
+otherwise the FCH SMBus is disabled and Corsair Vengeance RGB DDR5 sticks
+(0x19 / 0x1B on the PIIX4 SMBus) won't show up in OpenRGB.
+"""
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
-HUB = "/usr/bin/ryoku-hub"
+OPENRGB = shutil.which("openrgb") or "/usr/bin/openrgb"
+NOTIFY = shutil.which("notify-send") or "/usr/bin/notify-send"
+POWER = shutil.which("powerprofilesctl") or "/usr/bin/powerprofilesctl"
+
 STATE = Path.home() / ".local/state/silent-mode"
-SAVE = STATE / "brightness.json"
-# Mode lives in a marker file, NOT activeProfile: ryoku-power-cutover flips
-# profiles on its own, which desynced the toggle and poisoned SAVE with zeros.
 ON = STATE / "on"
+PROFILES = Path.home() / ".config/OpenRGB/profiles"
 
 
-def hub(*args):
-    return subprocess.run([HUB, *args], capture_output=True, text=True).stdout
+def ensure_server():
+    """Start the OpenRGB server if the CLI cannot talk to it."""
+    r = subprocess.run([OPENRGB, "--list-devices"], capture_output=True, text=True)
+    if r.returncode != 0:
+        subprocess.run(["sudo", "systemctl", "start", "openrgb.service"], capture_output=True)
 
 
-def devices():
-    try:
-        ds = json.loads(hub("lighting", "state")).get("devices", [])
-    except json.JSONDecodeError:
-        return []
-    return list(ds.values() if isinstance(ds, dict) else ds)
+def run(*args):
+    ensure_server()
+    r = subprocess.run([OPENRGB, *args], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"openrgb {' '.join(args)} failed: {r.stderr.strip()}")
+    return r
 
 
 def notify(title, body):
-    subprocess.run(["/usr/bin/notify-send", title, body])
+    subprocess.run([NOTIFY, title, body], capture_output=True)
 
 
-# The fx daemon loses its server session (broken pipe) whenever ryoku-openrgb
-# restarts and its unit is Restart=no; is-active misses the active-but-dead
-# case. Always revive: a fresh daemon reconnects AND re-pushes current
-# settings, so stuck breathe devices heal themselves here.
-subprocess.run(["/usr/bin/systemctl", "--user", "restart", "ryoku-lighting-fx"])
+def ensure_profiles():
+    """Create normal + silent OpenRGB profiles if missing."""
+    PROFILES.mkdir(parents=True, exist_ok=True)
+    if (PROFILES / "normal.json").exists() and (PROFILES / "silent.json").exists():
+        return
+    # Save current look as 'normal', then turn all LEDs black and save as 'silent'.
+    run("--save-profile", "normal")
+    run("--color", "000000")
+    run("--save-profile", "silent")
+    run("--profile", "normal")
 
-devs = [d for d in devices() if d.get("managed", True)]
 
-if ON.exists():
-    hub("cpu", "switch", "balanced")
-    ON.unlink()
-    saved = json.loads(SAVE.read_text()) if SAVE.exists() else {}
-    for d in devs:
-        hub("lighting", "set", d["key"],
-            json.dumps({"brightness": saved.get(d["key"], d.get("brightness") or 50)}))
-    notify("Silent mode OFF", "Fans normal, RGB restored")
-else:
-    hub("cpu", "switch", "power-saver")
+def set_cpu(profile):
+    """Switch powerprofile if available; silently no-op otherwise."""
+    if Path(POWER).exists():
+        subprocess.run([POWER, "set", profile], capture_output=True)
+
+
+def main():
     STATE.mkdir(parents=True, exist_ok=True)
-    # never save 0: a poisoned brightness.json restored zeros forever,
-    # leaving the breathe devices dark (only the RAM, which ignores
-    # brightness, ever lit again)
-    SAVE.write_text(json.dumps(
-        {d["key"]: max(d.get("brightness") or 50, 10) for d in devs}))
-    ON.write_text("")
-    for d in devs:
-        hub("lighting", "set", d["key"], '{"brightness": 0}')
-    notify("Silent mode ON", "Lights out, fans low")
+    ensure_profiles()
+
+    if ON.exists():
+        run("--profile", "normal")
+        set_cpu("balanced")
+        ON.unlink()
+        notify("Silent mode OFF", "RGB restored, balanced power")
+    else:
+        # Refresh normal so we restore whatever the user currently has.
+        run("--save-profile", "normal")
+        run("--profile", "silent")
+        set_cpu("power-saver")
+        ON.write_text("")
+        notify("Silent mode ON", "Lights out, power-saver")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] in ("--init", "init"):
+        ensure_profiles()
+        notify("Silent mode", "Profiles initialized")
+    else:
+        main()
